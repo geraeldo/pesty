@@ -33,8 +33,14 @@ final class ClipboardStore {
     private var undoExpirationWorkItem: DispatchWorkItem?
 
     var source: BarSource = .history {
-        didSet { if source != oldValue { clearMultiSelection() } }
+        didSet {
+            if source != oldValue { clearMultiSelection(); reorderingItemID = nil }
+        }
     }
+    /// The Pinboard clip being dragged within the bar, if any. A drag that
+    /// ends in another app never comes back to clear it, so every new drag,
+    /// section change and presentation overwrites it.
+    @ObservationIgnored var reorderingItemID: UUID?
     var barInputMode: BarInputMode = .cards
     var searchText: String = "" {
         didSet { if searchText != oldValue { clearMultiSelection() } }
@@ -399,6 +405,28 @@ final class ClipboardStore {
         scheduleSave()
     }
 
+    /// Moves a Pinboard clip into the slot `targetID` occupies. History keeps
+    /// its newest-first order, so only Pinboards can be rearranged. The order
+    /// is saved locally; CloudKit sync re-sorts by date on other devices.
+    func movePinboardItem(_ id: UUID, to targetID: UUID, in boardID: UUID) {
+        guard let b = pinboards.firstIndex(where: { $0.id == boardID }),
+              let items = Self.reordered(pinboards[b].items, moving: id, to: targetID) else { return }
+        pinboards[b].items = items
+        scheduleSave()
+    }
+
+    /// `items` with `id` taken out and put back where `targetID` was, so it
+    /// lands after the target when moving right and before it when moving
+    /// left. Nil when nothing would change.
+    nonisolated static func reordered(_ items: [ClipItem], moving id: UUID, to targetID: UUID) -> [ClipItem]? {
+        guard id != targetID,
+              let from = items.firstIndex(where: { $0.id == id }),
+              let to = items.firstIndex(where: { $0.id == targetID }) else { return nil }
+        var items = items
+        items.insert(items.remove(at: from), at: to)
+        return items
+    }
+
     /// A copy with its own UUID and its own image file, so no two containers
     /// ever share an identity (one sync record per container) or a file.
     private func independentCopy(of item: ClipItem, createdAt: Date) -> ClipItem {
@@ -590,6 +618,7 @@ final class ClipboardStore {
     func prepareForBarPresentation() {
         applyRetentionPolicy()
         clearMultiSelection()
+        reorderingItemID = nil
         barPresentationToken &+= 1
         selectFirst()
     }

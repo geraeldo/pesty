@@ -210,6 +210,8 @@ struct BarView: View {
                                      index: index,
                                      selected: store.isSelected(item.id))
                             .id(item.id)
+                            .onDrop(of: [.item],
+                                    delegate: PinboardReorderDropDelegate(targetID: item.id, store: store))
                             .transition(.asymmetric(
                                 insertion: .scale(scale: 0.92).combined(with: .opacity),
                                 removal: .opacity))

@@ -48,7 +48,16 @@ struct ClipCardView: View {
         .onTapGesture { store.select(item.id) }
         .highPriorityGesture(TapGesture().modifiers(.shift).onEnded { store.extendSelection(to: item.id) })
         .highPriorityGesture(TapGesture().modifiers(.command).onEnded { store.toggleSelection(item.id) })
-        .onDrag { ClipDragProvider.make(for: item) }
+        .onDrag {
+            // The same drag can land in another app or back on a Pinboard
+            // card, where PinboardReorderDropDelegate uses this to reorder.
+            if case .pinboard = store.source {
+                store.reorderingItemID = item.id
+            } else {
+                store.reorderingItemID = nil
+            }
+            return ClipDragProvider.make(for: item)
+        }
         .contextMenu { menu }
         .task(id: item.id) { await loadPreview() }
     }
